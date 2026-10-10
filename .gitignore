@@ -1,7 +1,0 @@
-# Фронтенд
-frontend/node_modules/
-frontend/dist/
-
-# Бекенд
-backend/venv/
-backend/__pycache__/
