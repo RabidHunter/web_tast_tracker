@@ -4,7 +4,6 @@ import psycopg2
 
 app = FastAPI()
 
-# Налаштування CORS, щоб React міг робити запити до бекенду
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,7 +12,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Параметри підключення до БД (замініть user та password на свої)
 DB_CONFIG = {
     "dbname": "postgres",
     "user": "postgres",
@@ -32,5 +30,4 @@ def get_items():
     cur.close()
     conn.close()
 
-    # Форматуємо результат у список JSON-об'єктів
     return [{"id": row[0], "name": row[1], "is_completed": row[2]} for row in rows]
