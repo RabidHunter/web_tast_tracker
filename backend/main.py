@@ -1,8 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from api.task_routes import router as task_router
 
-app = FastAPI(title="Task Tracker API", version="1.0.0")
+app = FastAPI(title="Task Tracker API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,8 +15,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(task_router)
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail},
+    )
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"error": "Validation Error", "details": exc.errors()},
+    )
+
+app.include_router(task_router)
