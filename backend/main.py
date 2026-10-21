@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import psycopg2
+from api.task_routes import router as task_router
 
-app = FastAPI()
+app = FastAPI(title="Task Tracker API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,22 +12,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_CONFIG = {
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "1234",
-    "host": "localhost",
-    "port": "5432",
-}
+app.include_router(task_router)
 
-
-@app.get("/items")
-def get_items():
-    conn = psycopg2.connect(**DB_CONFIG)
-    cur = conn.cursor()
-    cur.execute("SELECT id, name, is_completed FROM items ORDER BY id;")
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    return [{"id": row[0], "name": row[1], "is_completed": row[2]} for row in rows]
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}

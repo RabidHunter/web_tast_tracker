@@ -1,13 +1,13 @@
 import { useState } from 'react'
 
 function App() {
-  const [items, setItems] = useState([])
+  const [tasks, setTasks] = useState([])
 
-  const loadItems = async () => {
+  const loadTasks = async () => {
     try {
-      const response = await fetch('http://localhost:8000/items')
+      const response = await fetch('http://localhost:8000/tasks')
       const data = await response.json()
-      setItems(data)
+      setTasks(data)
     } catch (error) {
       console.error("Помилка завантаження даних:", error)
     }
@@ -17,14 +17,14 @@ function App() {
     <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
       <h1>Task Tracker</h1>
       <button
-        onClick={loadItems}
+        onClick={loadTasks}
         style={{ padding: '10px 20px', fontSize: '16px', marginBottom: '20px', cursor: 'pointer' }}
       >
-        Load items
+        Load tasks
       </button>
 
       <ul style={{ listStyleType: 'none', padding: 0 }}>
-        {items.map(item => (
+        {tasks.map(item => (
           <li key={item.id} style={{
             padding: '15px',
             borderBottom: '1px solid #eee',
