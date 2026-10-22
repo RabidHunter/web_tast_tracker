@@ -1,75 +1,110 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 from typing import List, Optional
 from service.task_service import TaskService
 
-router = APIRouter()
+router = APIRouter(prefix="/tasks", tags=["Tasks"])
 task_service = TaskService()
 
+idempotency_store = {}
 
-class CreateTaskRequest(BaseModel):
+class TaskCreateRequest(BaseModel):
     name: str
 
-
-class UpdateTaskRequest(BaseModel):
+class TaskUpdateRequest(BaseModel):
     name: Optional[str] = None
     is_completed: Optional[bool] = None
-
 
 class TaskResponse(BaseModel):
     id: int
     name: str
     is_completed: bool
+    owner_id: Optional[int] = None
+    requestId: Optional[str] = None
 
 
-def error_response(code: str, message: str, status_code: int):
-    raise HTTPException(
-        status_code=status_code,
-        detail={
-            "error": "TaskError",
-            "code": code,
-            "details": [{"field": "general", "message": message}],
-        },
-    )
-
-
-@router.get("/tasks", response_model=List[TaskResponse])
-def get_tasks():
+@router.get("/", response_model=List[TaskResponse])
+def get_tasks(request: Request):
     tasks = task_service.get_all_tasks()
-    return [{"id": t.id, "name": t.name, "is_completed": t.is_completed} for t in tasks]
+    req_id = getattr(request.state, "request_id", None)
+    
+    response_list = []
+    for t in tasks:
+        resp = TaskResponse(
+            id=t.id, 
+            name=t.name, 
+            is_completed=t.is_completed, 
+            owner_id=t.owner_id,
+            requestId=req_id
+        )
+        response_list.append(resp)
+        
+    return response_list
 
-
-@router.get("/tasks/{task_id}", response_model=TaskResponse)
-def get_task(task_id: int):
+@router.get("/{task_id}", response_model=TaskResponse)
+def get_task(task_id: int, request: Request):
     task = task_service.get_task_by_id(task_id)
     if not task:
-        error_response("NOT_FOUND", "Task not found", status.HTTP_404_NOT_FOUND)
-    return {"id": task.id, "name": task.name, "is_completed": task.is_completed}
-
-
-@router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task(request: CreateTaskRequest):
-    if not request.name.strip():
-        error_response(
-            "VALIDATION_ERROR", "Name cannot be empty", status.HTTP_400_BAD_REQUEST
-        )
-
-    task = task_service.create_task(request.name)
-    return {"id": task.id, "name": task.name, "is_completed": task.is_completed}
-
-
-@router.patch("/tasks/{task_id}", response_model=TaskResponse)
-def update_task(task_id: int, request: UpdateTaskRequest):
-    task = task_service.update_task(
-        task_id, new_name=request.name, is_completed=request.is_completed
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    return TaskResponse(
+        id=task.id, 
+        name=task.name, 
+        is_completed=task.is_completed, 
+        owner_id=task.owner_id,
+        requestId=getattr(request.state, "request_id", None)
     )
+
+@router.post("/", response_model=TaskResponse, status_code=201)
+def create_task(
+    request: Request,
+    task_data: TaskCreateRequest, 
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")
+):
+    req_id = getattr(request.state, "request_id", None)
+
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="idempotency_key_required")
+
+    if idempotency_key in idempotency_store:
+        cached_response = idempotency_store[idempotency_key]
+        cached_response["requestId"] = req_id
+        return cached_response
+
+    try:
+        task = task_service.create_task(task_data.name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
+    response_data = {
+        "id": task.id,
+        "name": task.name,
+        "is_completed": task.is_completed,
+        "owner_id": task.owner_id,
+        "requestId": req_id
+    }
+
+    idempotency_store[idempotency_key] = response_data
+    
+    return response_data
+
+@router.put("/{task_id}", response_model=TaskResponse)
+def update_task(task_id: int, task_data: TaskUpdateRequest, request: Request):
+    task = task_service.update_task(task_id, task_data.name, task_data.is_completed)
     if not task:
-        error_response("NOT_FOUND", "Task not found", status.HTTP_404_NOT_FOUND)
-    return {"id": task.id, "name": task.name, "is_completed": task.is_completed}
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    return TaskResponse(
+        id=task.id, 
+        name=task.name, 
+        is_completed=task.is_completed, 
+        owner_id=task.owner_id,
+        requestId=getattr(request.state, "request_id", None)
+    )
 
-
-@router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{task_id}", status_code=204)
 def delete_task(task_id: int):
     success = task_service.delete_task(task_id)
     if not success:
-        error_response("NOT_FOUND", "Task not found", status.HTTP_404_NOT_FOUND)
+        raise HTTPException(status_code=404, detail="Task not found")
+    return Response(status_code=204)
